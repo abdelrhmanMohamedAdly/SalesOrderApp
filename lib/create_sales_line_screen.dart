@@ -1,7 +1,10 @@
-import 'package:flutter/material.dart';
 import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'd365_service.dart';
 import 'sales_order_lines_screen.dart';
 
 class CreateSalesLineScreen extends StatefulWidget {
@@ -29,36 +32,62 @@ class CreateSalesLineScreen extends StatefulWidget {
 
 class _CreateSalesLineScreenState extends State<CreateSalesLineScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _itemIdController = TextEditingController();
+
+  List<String> _items = [];
+  List<Map<String, String>> _warehouses = [];
+  List<String> _sites = [];
+  List<String> _currencies = ['USD', 'EUR', 'GBP', 'EGP', 'SAR', 'AED'];
+
+  String? _selectedItem;
+  String? _selectedCurrency;
   final _quantityController = TextEditingController();
   final _discountController = TextEditingController();
-  final _shippingWarehouseController = TextEditingController();
-  final _siteController = TextEditingController();
   final _priceController = TextEditingController();
-  final _currencyController = TextEditingController(text: 'USD');
 
   bool _isSubmitting = false;
-
   String? salesLineEntity;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadSettingsAndMetadata();
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> _loadSettingsAndMetadata() async {
     final prefs = await SharedPreferences.getInstance();
     salesLineEntity = prefs.getString('salesLineEntity') ?? '';
-
-    if (salesLineEntity == null || salesLineEntity!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('⚠️ Sales Line Entity not set. Check settings.'),
-        ),
-      );
-      Navigator.pop(context);
+    if (salesLineEntity!.isEmpty) {
+      _showErrorAndPop('Sales Line Entity not set. Check settings.');
+      return;
     }
+
+    final service = D365Service(
+      tenantId: widget.tenantId,
+      clientId: widget.clientId,
+      clientSecret: widget.clientSecret,
+      resource: widget.resource,
+    );
+
+    try {
+      final items = await service.getItems(widget.accessToken);
+
+      setState(() {
+        _items = items;
+        if (_items.isNotEmpty) _selectedItem = _items.first
+            .split(' - ')
+            .first;
+        if (_currencies.isNotEmpty) _selectedCurrency = _currencies.first;
+      });
+    } catch (e) {
+      _showErrorAndPop('Error loading metadata: $e');
+    }
+  }
+
+  void _showErrorAndPop(String msg) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      Navigator.pop(context);
+    });
   }
 
   Future<void> _createLine() async {
@@ -68,22 +97,19 @@ class _CreateSalesLineScreenState extends State<CreateSalesLineScreen> {
     final lineData = {
       "dataAreaId": "usmf",
       "SalesOrderNumber": widget.salesOrderNumber,
-      "ItemNumber": _itemIdController.text.trim(),
-      "OrderedSalesQuantity":
-          double.tryParse(_quantityController.text.trim()) ?? 1.0,
+      "ItemNumber": _selectedItem,
+      "OrderedSalesQuantity": double.tryParse(
+          _quantityController.text.trim()) ?? 1.0,
       "SalesPrice": double.tryParse(_priceController.text.trim()) ?? 0.0,
       "SalesPriceQuantity": 1.0,
-      "LineDiscountAmount":
-          double.tryParse(_discountController.text.trim()) ?? 0.0,
-      "ShippingWarehouseId": _shippingWarehouseController.text.trim(),
-      "ShippingSiteId": _siteController.text.trim(),
-      "CurrencyCode": _currencyController.text.trim(),
+      "LineDiscountAmount": double.tryParse(_discountController.text.trim()) ??
+          0.0,
+      "ShippingWarehouseId": widget.orderFields["DefaultShippingWarehouseId"],
+      "ShippingSiteId": widget.orderFields["DefaultShippingSiteId"],
+      "CurrencyCode": _selectedCurrency,
     };
 
     final url = '${widget.resource}/data/$salesLineEntity';
-    print('📦 API URL: $url');
-    print('🟨 Sending line data: ${jsonEncode(lineData)}');
-
     try {
       final response = await http.post(
         Uri.parse(url),
@@ -99,44 +125,62 @@ class _CreateSalesLineScreenState extends State<CreateSalesLineScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('✅ Sales line created successfully')),
         );
-
-        Future.delayed(Duration(milliseconds: 500), () {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => SalesOrderLinesScreen(
-                orderNumber: widget.salesOrderNumber,
-                accessToken: widget.accessToken,
-                tenantId: widget.tenantId,
-                clientId: widget.clientId,
-                clientSecret: widget.clientSecret,
-                resource: widget.resource,
-                forceReload: true,
-                orderFields: widget.orderFields,
-              ),
-            ),
-          );
-        });
-      } else {
-        print('❌ Error: ${response.statusCode} ${response.body}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Failed to create line. (${response.statusCode})'),
-            duration: Duration(seconds: 5),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                SalesOrderLinesScreen(
+                  orderNumber: widget.salesOrderNumber,
+                  accessToken: widget.accessToken,
+                  tenantId: widget.tenantId,
+                  clientId: widget.clientId,
+                  clientSecret: widget.clientSecret,
+                  resource: widget.resource,
+                  orderFields: widget.orderFields,
+                  forceReload: true,
+                ),
           ),
         );
+      } else {
+        throw Exception('Failed with status ${response.statusCode}');
       }
     } catch (e) {
-      print('❗ Exception: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Exception occurred.\n$e'),
-          duration: Duration(seconds: 5),
-        ),
+        SnackBar(content: Text('❌ Exception: $e')),
       );
     } finally {
       setState(() => _isSubmitting = false);
     }
+  }
+
+  Widget _buildDropdown({
+    required String label,
+    required List<dynamic> items,
+    required dynamic selectedValue,
+    required ValueChanged<dynamic> onChanged,
+  }) {
+    dynamic resolvedValue = selectedValue;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: DropdownButtonFormField(
+        isExpanded: true,
+        value: resolvedValue,
+        decoration: InputDecoration(
+            labelText: label, border: OutlineInputBorder()),
+        items: items.map<DropdownMenuItem>((item) {
+          return DropdownMenuItem(
+            value: item,
+            child: Text(item, overflow: TextOverflow.ellipsis),
+          );
+        }).toList(),
+        onChanged: onChanged,
+        validator: (v) =>
+        v == null || (v is String && v.isEmpty)
+            ? 'Required'
+            : null,
+      ),
+    );
   }
 
   @override
@@ -149,22 +193,65 @@ class _CreateSalesLineScreenState extends State<CreateSalesLineScreen> {
           key: _formKey,
           child: ListView(
             children: [
-              _buildField(
-                _itemIdController,
-                'Item Number',
-                isNumeric: false,
-                required: true,
+              _buildDropdown(
+                label: 'Item',
+                items: _items,
+                selectedValue: _selectedItem,
+                onChanged: (val) =>
+                    setState(() =>
+                    _selectedItem = val
+                        ?.split(' - ')
+                        .first),
               ),
-              _buildField(_quantityController, 'Quantity', isNumeric: true),
-              _buildField(_priceController, 'Price', isNumeric: true),
-              _buildField(_discountController, 'Discount', isNumeric: true),
-              _buildField(
-                _shippingWarehouseController,
-                'Warehouse ID',
-                required: true,
+              SizedBox(height: 12),
+              TextFormField(
+                controller: _quantityController,
+                decoration: InputDecoration(
+                    labelText: 'Quantity', border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
+                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
               ),
-              _buildField(_siteController, 'Site ID', required: true),
-              _buildField(_currencyController, 'Currency Code', required: true),
+              SizedBox(height: 12),
+              TextFormField(
+                initialValue: widget
+                    .orderFields["DefaultShippingWarehouseId"] ?? '',
+                readOnly: true,
+                decoration: InputDecoration(
+                  labelText: 'Warehouse',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              SizedBox(height: 12),
+              TextFormField(
+                initialValue: widget.orderFields["DefaultShippingSiteId"] ?? '',
+                readOnly: true,
+                decoration: InputDecoration(
+                  labelText: 'Site',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              SizedBox(height: 12),
+              TextFormField(
+                controller: _priceController,
+                decoration: InputDecoration(
+                    labelText: 'Price', border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
+                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+              ),
+              SizedBox(height: 12),
+              TextFormField(
+                controller: _discountController,
+                decoration: InputDecoration(
+                    labelText: 'Discount', border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
+              ),
+              SizedBox(height: 12),
+              _buildDropdown(
+                label: 'Currency Code',
+                items: _currencies,
+                selectedValue: _selectedCurrency,
+                onChanged: (val) => setState(() => _selectedCurrency = val),
+              ),
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _createLine,
@@ -175,29 +262,6 @@ class _CreateSalesLineScreenState extends State<CreateSalesLineScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildField(
-    TextEditingController controller,
-    String label, {
-    bool isNumeric = false,
-    bool required = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: TextFormField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          border: OutlineInputBorder(),
-        ),
-        keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
-        validator: (val) {
-          if (required && (val == null || val.isEmpty)) return 'Required';
-          return null;
-        },
       ),
     );
   }

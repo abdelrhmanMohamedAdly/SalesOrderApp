@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -115,12 +116,9 @@ class D365Service {
       return null;
     }
   }
-
-  Future<bool> createSalesOrderLine(
-    String accessToken,
-    String salesOrderNumber,
-    Map<String, dynamic> lineData,
-  ) async {
+  Future<bool> createSalesOrderLine(String accessToken,
+      String salesOrderNumber,
+      Map<String, dynamic> lineData,) async {
     final prefs = await SharedPreferences.getInstance();
     final entity = prefs.getString('salesLineEntity') ?? '';
     final url = Uri.parse("$resource/data/$entity");
@@ -138,22 +136,28 @@ class D365Service {
       "ShippingSiteId": lineData["ShippingSiteId"],
     };
 
+    final headers = {
+      'Authorization': 'Bearer $accessToken',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    print("📦 Payload: ${json.encode(payload)}");
+    print("📨 Headers: $headers");
+
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: headers,
         body: json.encode(payload),
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
+        print("✅ Line created successfully");
         return true;
       } else {
         print("❌ API Error ${response.statusCode}");
-        print("Body: ${response.body}");
+        print("🧾 Response body: ${response.body}");
         return false;
       }
     } catch (e) {
@@ -162,9 +166,10 @@ class D365Service {
     }
   }
 
+  /// get Customers:
   Future<List<String>> getCustomers(String token) async {
     final prefs = await SharedPreferences.getInstance();
-    final entity = prefs.getString('salesOrderEntity') ?? '';
+    final entity = prefs.getString('allCustomersEntity') ?? '';
     final uri = Uri.parse("$resource/data/$entity");
 
     try {
@@ -178,20 +183,145 @@ class D365Service {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final orders = data['value'] as List;
-        return orders
-            .map<String>(
-              (order) => order['InvoiceCustomerAccountNumber'] ?? 'Unknown',
-            )
+        final customers = data['value'] as List;
+
+        return customers
+            .map<String>((customer) {
+              final acc = customer['CustomerAccount'] ?? 'Unknown';
+              final name = customer['OrganizationName'] ?? '';
+              return "$acc - $name";
+            })
             .toSet()
             .toList();
       } else {
         throw Exception(
-          '❌ Failed to fetch sales order customers: ${response.statusCode}\n${response.body}',
+          '❌ Failed to fetch customers: ${response.statusCode}\n${response.body}',
         );
       }
     } catch (e) {
       print('❗ Exception during getCustomers: $e');
+      rethrow;
+    }
+  }
+
+  /// get Items
+  Future<List<String>> getItems(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    final entity = prefs.getString('itemEntity') ?? '';
+    final uri = Uri.parse("$resource/data/$entity");
+
+    try {
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final items = data['value'] as List;
+
+        return items
+            .map<String>((item) => item['ItemId']?.toString() ?? '')
+            .where((item) => item.isNotEmpty)
+            .toSet()
+            .toList();
+      } else {
+        throw Exception(
+          '❌ Failed to fetch items: ${response.statusCode}\n${response.body}',
+        );
+      }
+    } catch (e) {
+      print('❗ Exception during getItems: $e');
+      rethrow;
+    }
+  }
+
+  /// get Warehouses with InventSiteId
+  Future<List<Map<String, String>>> getWarehouses(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    final entity = prefs.getString('warehouseEntity') ?? '';
+    final uri = Uri.parse("$resource/data/$entity");
+
+    try {
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final warehouses = data['value'] as List;
+
+        return warehouses
+            .map<Map<String, String>>((warehouse) {
+              final id = warehouse['InventLocationId']?.toString() ?? '';
+              final name = warehouse['Name']?.toString() ?? '';
+              final siteId = warehouse['InventSiteId']?.toString() ?? '';
+              return {
+                'InventLocationId': id,
+                'Name': name,
+                'InventSiteId': siteId,
+              };
+            })
+            .where((w) => w['InventLocationId']!.isNotEmpty)
+            .toList();
+      } else {
+        throw Exception(
+          '❌ Failed to fetch warehouses: ${response.statusCode}\n${response.body}',
+        );
+      }
+    } catch (e) {
+      print('❗ Exception during getWarehouses: $e');
+      rethrow;
+    }
+  }
+
+  /// get Sites
+  Future<List<String>> getSites(String token, String SiteId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final entity = prefs.getString('siteEntity') ?? '';
+    final uri = Uri.parse(
+      "$resource/data/$entity?\$filter=SiteId eq '$SiteId'",
+    );
+
+    try {
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final sites = data['value'] as List;
+
+        return sites
+            .map<String>((site) {
+              final siteId = site['SiteId']?.toString() ?? '';
+              final siteName = site['Name']?.toString() ?? '';
+              if (siteId.isNotEmpty) {
+                return '$siteId - $siteName';
+              }
+              return '';
+            })
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList();
+      } else {
+        throw Exception(
+          '❌ Failed to fetch sites: ${response.statusCode}\n${response.body}',
+        );
+      }
+    } catch (e) {
+      print('❗ Exception during getSites: $e');
       rethrow;
     }
   }

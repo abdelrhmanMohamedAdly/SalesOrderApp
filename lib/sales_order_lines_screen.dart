@@ -40,7 +40,7 @@ class _SalesOrderLinesScreenState extends State<SalesOrderLinesScreen> {
 
   bool get isInvoiced =>
       (widget.orderFields['SalesOrderStatus'] ?? '').toString().toLowerCase() ==
-      'invoiced';
+          'invoiced';
 
   @override
   void initState() {
@@ -90,14 +90,15 @@ class _SalesOrderLinesScreenState extends State<SalesOrderLinesScreen> {
     ];
     final rows = filteredLines
         .map(
-          (line) => [
-            line['ItemNumber']?.toString() ?? '',
-            line['SalesProductCategoryName']?.toString() ?? '',
-            line['OrderedSalesQuantity']?.toString() ?? '',
-            line['SalesPrice']?.toString() ?? '',
-            line['LineAmount']?.toString() ?? '',
-          ],
-        )
+          (line) =>
+      [
+        line['ItemNumber']?.toString() ?? '',
+        line['SalesProductCategoryName']?.toString() ?? '',
+        line['OrderedSalesQuantity']?.toString() ?? '',
+        line['SalesPrice']?.toString() ?? '',
+        line['LineAmount']?.toString() ?? '',
+      ],
+    )
         .toList();
 
     final csvData = StringBuffer();
@@ -108,7 +109,7 @@ class _SalesOrderLinesScreenState extends State<SalesOrderLinesScreen> {
 
     final directory =
         await getExternalStorageDirectory() ??
-        await getApplicationDocumentsDirectory();
+            await getApplicationDocumentsDirectory();
     final path =
         '${directory.path}/sales_order_lines_${widget.orderNumber}.csv';
     final file = File(path);
@@ -153,119 +154,117 @@ class _SalesOrderLinesScreenState extends State<SalesOrderLinesScreen> {
       ),
       body: isLoading
           ? Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                if (lines.isNotEmpty)
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Column(
-                        children: [
-                          Row(
-                            children: columns.map((col) {
-                              return Container(
-                                width: 140,
-                                padding: EdgeInsets.all(8),
-                                child: TextField(
-                                  decoration: InputDecoration(
-                                    labelText: col['label'],
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      if (value.isEmpty) {
-                                        filters.remove(col['key']);
-                                      } else {
-                                        filters[col['key']!] = value;
-                                      }
-                                    });
-                                  },
+          : OrientationBuilder(
+        builder: (context, orientation) {
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              return Column(
+                children: [
+                  if (lines.isNotEmpty)
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.vertical,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minWidth: constraints.maxWidth,
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: columns.map((col) {
+                                    return Container(
+                                      width: 160,
+                                      padding: EdgeInsets.all(8),
+                                      child: TextField(
+                                        decoration: InputDecoration(
+                                          labelText: col['label'],
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            if (value.isEmpty) {
+                                              filters.remove(col['key']);
+                                            } else {
+                                              filters[col['key']!] = value;
+                                            }
+                                          });
+                                        },
+                                      ),
+                                    );
+                                  }).toList(),
                                 ),
-                              );
-                            }).toList(),
-                          ),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.vertical,
-                            child: DataTable(
-                              columns: columns
-                                  .map(
-                                    (col) =>
-                                        DataColumn(label: Text(col['label']!)),
-                                  )
-                                  .toList(),
-                              rows: filteredLines.map((line) {
-                                return DataRow(
-                                  cells: [
-                                    DataCell(
-                                      Text(
-                                        line['ItemNumber']?.toString() ?? '',
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        line['SalesProductCategoryName']
-                                                ?.toString() ??
-                                            '',
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        line['OrderedSalesQuantity']
-                                                ?.toString() ??
-                                            '',
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        line['SalesPrice']?.toString() ?? '',
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        line['LineAmount']?.toString() ?? '',
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
+                                DataTable(
+                                  columns: columns
+                                      .map((col) =>
+                                      DataColumn(
+                                          label: Text(col['label']!)))
+                                      .toList(),
+                                  rows: filteredLines.map((line) {
+                                    return DataRow(cells: [
+                                      DataCell(Text(
+                                          line['ItemNumber']?.toString() ??
+                                              '')),
+                                      DataCell(Text(line[
+                                      'SalesProductCategoryName']
+                                          ?.toString() ??
+                                          '')),
+                                      DataCell(Text(line[
+                                      'OrderedSalesQuantity']
+                                          ?.toString() ??
+                                          '')),
+                                      DataCell(Text(
+                                          line['SalesPrice']?.toString() ??
+                                              '')),
+                                      DataCell(Text(
+                                          line['LineAmount']?.toString() ??
+                                              '')),
+                                    ]);
+                                  }).toList(),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: Center(
+                        child: Text("No lines found for this order."),
                       ),
                     ),
-                  )
-                else
-                  Expanded(
-                    child: Center(
-                      child: Text("No lines found for this order."),
-                    ),
-                  ),
-                SizedBox(height: 16),
-                if (!isInvoiced)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CreateSalesLineScreen(
-                            salesOrderNumber: widget.orderNumber,
-                            accessToken: widget.accessToken,
-                            tenantId: widget.tenantId,
-                            clientId: widget.clientId,
-                            clientSecret: widget.clientSecret,
-                            resource: widget.resource,
-                            orderFields: widget.orderFields,
+                  SizedBox(height: 16),
+                  if (!isInvoiced)
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                CreateSalesLineScreen(
+                                  salesOrderNumber: widget.orderNumber,
+                                  accessToken: widget.accessToken,
+                                  tenantId: widget.tenantId,
+                                  clientId: widget.clientId,
+                                  clientSecret: widget.clientSecret,
+                                  resource: widget.resource,
+                                  orderFields: widget.orderFields,
+                                ),
                           ),
-                        ),
-                      );
-                    },
-                    icon: Icon(Icons.add),
-                    label: Text("Add New Line"),
-                  ),
-
-                SizedBox(height: 16),
-              ],
-            ),
+                        );
+                      },
+                      icon: Icon(Icons.add),
+                      label: Text("Add New Line"),
+                    ),
+                  SizedBox(height: 16),
+                ],
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -17,8 +18,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _clientIdController = TextEditingController();
   final _clientSecretController = TextEditingController();
   final _resourceController = TextEditingController();
-  final _salesOrderEntityController = TextEditingController();
-  final _salesLineEntityController = TextEditingController();
 
   bool _rememberSettings = false;
 
@@ -37,10 +36,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _clientIdController.text = prefs.getString('clientId') ?? '';
       _clientSecretController.text = prefs.getString('clientSecret') ?? '';
       _resourceController.text = prefs.getString('resource') ?? '';
-      _salesOrderEntityController.text =
-          prefs.getString('salesOrderEntity') ?? '';
-      _salesLineEntityController.text =
-          prefs.getString('salesLineEntity') ?? '';
       setState(() => _rememberSettings = true);
     }
   }
@@ -54,18 +49,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await prefs.setString('tenantId', _tenantIdController.text.trim());
       await prefs.setString('clientId', _clientIdController.text.trim());
       await prefs.setString(
-        'clientSecret',
-        _clientSecretController.text.trim(),
-      );
+          'clientSecret', _clientSecretController.text.trim());
       await prefs.setString('resource', _resourceController.text.trim());
-      await prefs.setString(
-        'salesOrderEntity',
-        _salesOrderEntityController.text.trim(),
-      );
-      await prefs.setString(
-        'salesLineEntity',
-        _salesLineEntityController.text.trim(),
-      );
     }
 
     await prefs.setBool('settingsCompleted', true);
@@ -109,8 +94,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildField(_clientIdController, 'Client ID'),
               _buildField(_clientSecretController, 'Client Secret'),
               _buildField(_resourceController, 'Resource'),
-              _buildField(_salesOrderEntityController, 'Sales Order Entity'),
-              _buildField(_salesLineEntityController, 'Sales Line Entity'),
               Row(
                 children: [
                   Checkbox(

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'Sales_Entities_Screen.dart';
 import 'new_sales_order_Screen.dart';
 import 'd365_service.dart';
 import 'sales_order_lines_screen.dart';
@@ -206,6 +207,11 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         MaterialPageRoute(builder: (_) => LoginScreen()),
         (_) => false,
       );
+    } else if (value == 'entities') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => SalesEntitiesScreen()),
+      );
     }
   }
 
@@ -231,6 +237,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
             icon: Icon(Icons.more_vert),
             onSelected: _openMenuOption,
             itemBuilder: (context) => [
+              PopupMenuItem(value: 'entities', child: Text('Entities')),
               PopupMenuItem(value: 'settings', child: Text('Settings')),
               PopupMenuItem(value: 'logout', child: Text('Logout')),
             ],
