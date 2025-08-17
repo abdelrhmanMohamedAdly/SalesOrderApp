@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -16,6 +15,7 @@ class D365Service {
     required this.resource,
   });
 
+  /// get access token.
   Future<String?> getAccessToken() async {
     final url = Uri.parse(
       'https://login.microsoftonline.com/$tenantId/oauth2/token',
@@ -42,6 +42,7 @@ class D365Service {
     }
   }
 
+  /// get sales orders
   Future<List<dynamic>> fetchSalesOrders() async {
     final token = await getAccessToken();
     if (token == null) return [];
@@ -65,6 +66,7 @@ class D365Service {
     }
   }
 
+  ///get sales order lines
   Future<List<dynamic>> fetchSalesOrderLines(String salesOrderNumber) async {
     final token = await getAccessToken();
     if (token == null) return [];
@@ -90,83 +92,7 @@ class D365Service {
     }
   }
 
-  Future<String?> createSalesOrder(
-    String accessToken,
-    Map<String, dynamic> orderData,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-    final entity = prefs.getString('salesOrderEntity') ?? '';
-    final url = Uri.parse('$resource/data/$entity');
-
-    final response = await http.post(
-      url,
-      headers: {
-        'Authorization': 'Bearer $accessToken',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: jsonEncode(orderData),
-    );
-
-    if (response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      return data['SalesOrderNumber'];
-    } else {
-      print('❌ Failed to create sales order: ${response.body}');
-      return null;
-    }
-  }
-  Future<bool> createSalesOrderLine(String accessToken,
-      String salesOrderNumber,
-      Map<String, dynamic> lineData,) async {
-    final prefs = await SharedPreferences.getInstance();
-    final entity = prefs.getString('salesLineEntity') ?? '';
-    final url = Uri.parse("$resource/data/$entity");
-
-    final payload = {
-      "dataAreaId": "usmf",
-      "SalesOrderNumber": salesOrderNumber,
-      "ItemNumber": lineData["ItemNumber"],
-      "OrderedSalesQuantity": lineData["OrderedSalesQuantity"],
-      "SalesPrice": lineData["SalesPrice"],
-      "SalesPriceQuantity": lineData["SalesPriceQuantity"],
-      "LineDiscountAmount": lineData["LineDiscountAmount"],
-      "ShippingWarehouseId": lineData["ShippingWarehouseId"],
-      "CurrencyCode": lineData["CurrencyCode"],
-      "ShippingSiteId": lineData["ShippingSiteId"],
-    };
-
-    final headers = {
-      'Authorization': 'Bearer $accessToken',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-
-    print("📦 Payload: ${json.encode(payload)}");
-    print("📨 Headers: $headers");
-
-    try {
-      final response = await http.post(
-        url,
-        headers: headers,
-        body: json.encode(payload),
-      );
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        print("✅ Line created successfully");
-        return true;
-      } else {
-        print("❌ API Error ${response.statusCode}");
-        print("🧾 Response body: ${response.body}");
-        return false;
-      }
-    } catch (e) {
-      print('❌ Exception during createSalesOrderLine: $e');
-      return false;
-    }
-  }
-
-  /// get Customers:
+  /// get Customers.
   Future<List<String>> getCustomers(String token) async {
     final prefs = await SharedPreferences.getInstance();
     final entity = prefs.getString('allCustomersEntity') ?? '';
@@ -323,6 +249,88 @@ class D365Service {
     } catch (e) {
       print('❗ Exception during getSites: $e');
       rethrow;
+    }
+  }
+
+  /// create sales order
+  Future<String?> createSalesOrder(
+    String accessToken,
+    Map<String, dynamic> orderData,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final entity = prefs.getString('salesOrderEntity') ?? '';
+    final url = Uri.parse('$resource/data/$entity');
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode(orderData),
+    );
+
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['SalesOrderNumber'];
+    } else {
+      print('❌ Failed to create sales order: ${response.body}');
+      return null;
+    }
+  }
+
+  /// create sales order line
+  Future<bool> createSalesOrderLine(
+    String dataAreaId,
+    String accessToken,
+    String salesOrderNumber,
+    Map<String, dynamic> lineData,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final entity = prefs.getString('salesLineEntity') ?? '';
+    final url = Uri.parse("$resource/data/$entity");
+
+    final payload = {
+      "dataAreaId": dataAreaId,
+      "SalesOrderNumber": salesOrderNumber,
+      "ItemNumber": lineData["ItemNumber"],
+      "OrderedSalesQuantity": lineData["OrderedSalesQuantity"],
+      "SalesPrice": lineData["SalesPrice"],
+      "SalesPriceQuantity": lineData["SalesPriceQuantity"],
+      "LineDiscountAmount": lineData["LineDiscountAmount"],
+      "ShippingWarehouseId": lineData["ShippingWarehouseId"],
+      "CurrencyCode": lineData["CurrencyCode"],
+      "ShippingSiteId": lineData["ShippingSiteId"],
+    };
+
+    final headers = {
+      'Authorization': 'Bearer $accessToken',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    print("📦 Payload: ${json.encode(payload)}");
+    print("📨 Headers: $headers");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: json.encode(payload),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        print("✅ Line created successfully");
+        return true;
+      } else {
+        print("❌ API Error ${response.statusCode}");
+        print("🧾 Response body: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print('❌ Exception during createSalesOrderLine: $e');
+      return false;
     }
   }
 }

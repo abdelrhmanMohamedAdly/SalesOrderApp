@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_screen.dart';
+import 'Sales_Entities_Screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback? onSettingsSaved;
@@ -61,7 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } else {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => LoginScreen()),
+        MaterialPageRoute(builder: (_) => SalesEntitiesScreen()),
       );
     }
   }
