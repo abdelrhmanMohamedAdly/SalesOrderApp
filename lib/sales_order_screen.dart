@@ -31,9 +31,11 @@ class SalesOrderScreen extends StatefulWidget {
 
 class _SalesOrderScreenState extends State<SalesOrderScreen> {
   List<dynamic> orders = [];
+  List<dynamic> filteredOrdersList = [];
   bool isLoading = false;
   String? errorMessage;
-  String searchQuery = '';
+
+  Map<String, Map<String, dynamic>> columnFilters = {};
 
   @override
   void initState() {
@@ -48,6 +50,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       final List<dynamic> savedOrders = json.decode(savedData);
       setState(() {
         orders = savedOrders;
+        filteredOrdersList = List.from(orders);
         errorMessage = null;
       });
     } else {
@@ -84,14 +87,13 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         return;
       }
 
-      final existingOrderNumbers = orders
-          .map((e) => e['SalesOrderNumber'])
-          .toSet();
+      final existingOrderNumbers =
+      orders.map((e) => e['SalesOrderNumber']).toSet();
       final filteredNewOrders = newOrders
           .where(
             (order) =>
-                !existingOrderNumbers.contains(order['SalesOrderNumber']),
-          )
+            !existingOrderNumbers.contains(order['SalesOrderNumber']),
+      )
           .toList();
 
       if (filteredNewOrders.isNotEmpty) {
@@ -100,6 +102,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       }
 
       setState(() {
+        filteredOrdersList = List.from(orders);
         isLoading = false;
         errorMessage = filteredNewOrders.isEmpty
             ? "No new sales orders to add."
@@ -118,6 +121,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     await prefs.remove('salesOrders');
     setState(() {
       orders.clear();
+      filteredOrdersList.clear();
       errorMessage = "Cache cleared. Please refresh.";
     });
   }
@@ -179,20 +183,102 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     }
   }
 
-  List<dynamic> get filteredOrders {
-    if (searchQuery.isEmpty) return orders;
-    return orders
-        .where(
-          (order) =>
-              (order['SalesOrderNumber'] ?? '')
-                  .toString()
-                  .toLowerCase()
-                  .contains(searchQuery.toLowerCase()) ||
-              (order['SalesOrderName'] ?? '').toString().toLowerCase().contains(
-                searchQuery.toLowerCase(),
+  void _applyFilters() {
+    setState(() {
+      filteredOrdersList = orders.where((order) {
+        for (var col in columnFilters.keys) {
+          var filterType = columnFilters[col]!['type'];
+          var filterValue = columnFilters[col]!['value']
+              .toString()
+              .toLowerCase();
+          var fieldValue = order[col]?.toString().toLowerCase() ?? '';
+
+          if (filterValue.isEmpty) continue;
+
+          switch (filterType) {
+            case 'Contains':
+              if (!fieldValue.contains(filterValue)) return false;
+              break;
+            case 'Equals':
+              if (fieldValue != filterValue) return false;
+              break;
+            case 'Begins With':
+              if (!fieldValue.startsWith(filterValue)) return false;
+              break;
+            case 'Ends With':
+              if (!fieldValue.endsWith(filterValue)) return false;
+              break;
+            case 'Is One Of':
+              var values = filterValue.split(',').map((e) => e.trim()).toList();
+              if (!values.contains(fieldValue)) return false;
+              break;
+          }
+        }
+        return true;
+      }).toList();
+    });
+  }
+
+  void _showFilterDialog(String columnName) {
+    String selectedFilter = 'Contains';
+    TextEditingController valueController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) =>
+          AlertDialog(
+            title: Text('Filter: $columnName'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButton<String>(
+                  value: selectedFilter,
+                  items: [
+                    'Contains',
+                    'Equals',
+                    'Begins With',
+                    'Ends With',
+                    'Is One Of'
+                  ]
+                      .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() => selectedFilter = v!);
+                  },
+                ),
+                TextField(
+                  controller: valueController,
+                  decoration: InputDecoration(hintText: 'Enter value'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    columnFilters[columnName] = {
+                      'type': selectedFilter,
+                      'value': valueController.text
+                    };
+                  });
+                  _applyFilters();
+                  Navigator.pop(context);
+                },
+                child: Text('Apply'),
               ),
-        )
-        .toList();
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    columnFilters.remove(columnName);
+                  });
+                  _applyFilters();
+                  Navigator.pop(context);
+                },
+                child: Text('Clear'),
+              ),
+            ],
+          ),
+    );
   }
 
   void _openMenuOption(String value) {
@@ -205,7 +291,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => LoginScreen()),
-        (_) => false,
+            (_) => false,
       );
     } else if (value == 'entities') {
       Navigator.push(
@@ -219,13 +305,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          decoration: InputDecoration(
-            hintText: 'Search Orders...',
-            border: InputBorder.none,
-          ),
-          onChanged: (value) => setState(() => searchQuery = value),
-        ),
+        title: Text('Sales Orders'),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -246,69 +326,134 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       ),
       body: isLoading
           ? Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: filteredOrders.length,
-              itemBuilder: (context, index) {
-                final order = filteredOrders[index];
-                return Card(
-                  margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+          : SingleChildScrollView(
+        child: PaginatedDataTable(
+          header: Text('Sales Orders'),
+          rowsPerPage: 10,
+          columns: [
+            DataColumn(
+              label: Row(
+                children: [
+                  Text('SalesOrderNumber'),
+                  IconButton(
+                    icon: Icon(Icons.filter_list, size: 18),
+                    onPressed: () => _showFilterDialog('SalesOrderNumber'),
                   ),
-                  child: ListTile(
-                    leading: Icon(Icons.shopping_cart, color: Colors.blue),
-                    title: Text(
-                      "Order: ${order['SalesOrderNumber'] ?? 'N/A'}",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Customer: ${order['SalesOrderName'] ?? 'N/A'}"),
-                        Text("Status: ${order['SalesOrderStatus'] ?? 'N/A'}"),
-                        Text(
-                          "Total: ${order['OrderTotalChargesAmount'] ?? '0'}",
-                        ),
-                      ],
-                    ),
-                    trailing: Icon(Icons.arrow_forward_ios),
-                    onTap: () async {
-                      final prefs = await SharedPreferences.getInstance();
-                      final salesLineEntity =
-                          prefs.getString('salesLineEntity') ?? '';
-
-                      final service = D365Service(
-                        tenantId: widget.tenantId,
-                        clientId: widget.clientId,
-                        clientSecret: widget.clientSecret,
-                        resource: widget.resource,
-                      );
-                      final accessToken = await service.getAccessToken() ?? '';
-                      final orderNumber = order['SalesOrderNumber'];
-                      final lines = await service.fetchSalesOrderLines(
-                        orderNumber,
-                      );
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SalesOrderLinesScreen(
-                            orderNumber: orderNumber,
-                            accessToken: accessToken,
-                            tenantId: widget.tenantId,
-                            clientId: widget.clientId,
-                            clientSecret: widget.clientSecret,
-                            resource: widget.resource,
-                            orderFields: order,
-                            forceReload: true,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
+                ],
+              ),
             ),
+            DataColumn(
+              label: Row(
+                children: [
+                  Text('SalesOrderName'),
+                  IconButton(
+                    icon: Icon(Icons.filter_list, size: 18),
+                    onPressed: () => _showFilterDialog('SalesOrderName'),
+                  ),
+                ],
+              ),
+            ),
+            DataColumn(
+              label: Row(
+                children: [
+                  Text('SalesOrderStatus'),
+                  IconButton(
+                    icon: Icon(Icons.filter_list, size: 18),
+                    onPressed: () => _showFilterDialog('SalesOrderStatus'),
+                  ),
+                ],
+              ),
+            ),
+            DataColumn(
+              label: Row(
+                children: [
+                  Text('OrderTotalChargesAmount'),
+                  IconButton(
+                    icon: Icon(Icons.filter_list, size: 18),
+                    onPressed: () =>
+                        _showFilterDialog('OrderTotalChargesAmount'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          source: _SalesOrderDataSource(
+            filteredOrdersList,
+            context,
+            widget.tenantId,
+            widget.clientId,
+            widget.clientSecret,
+            widget.resource,
+          ),
+        ),
+      ),
     );
   }
 }
+
+class _SalesOrderDataSource extends DataTableSource {
+  final List<dynamic> data;
+  final BuildContext context;
+  final String tenantId;
+  final String clientId;
+  final String clientSecret;
+  final String resource;
+
+  _SalesOrderDataSource(this.data,
+      this.context,
+      this.tenantId,
+      this.clientId,
+      this.clientSecret,
+      this.resource,);
+
+  @override
+  DataRow? getRow(int index) {
+    if (index >= data.length) return null;
+    final order = data[index];
+    return DataRow(
+      cells: [
+        DataCell(Text(order['SalesOrderNumber'] ?? '')),
+        DataCell(Text(order['SalesOrderName'] ?? '')),
+        DataCell(Text(order['SalesOrderStatus'] ?? '')),
+        DataCell(Text(order['OrderTotalChargesAmount']?.toString() ?? '0')),
+      ],
+      onSelectChanged: (selected) async {
+        if (selected == true) {
+          final service = D365Service(
+            tenantId: tenantId,
+            clientId: clientId,
+            clientSecret: clientSecret,
+            resource: resource,
+          );
+          final accessToken = await service.getAccessToken() ?? '';
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  SalesOrderLinesScreen(
+                    orderNumber: order['SalesOrderNumber'],
+                    accessToken: accessToken,
+                    tenantId: tenantId,
+                    clientId: clientId,
+                    clientSecret: clientSecret,
+                    resource: resource,
+                    orderFields: order,
+                    forceReload: true,
+                  ),
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  @override
+  bool get isRowCountApproximate => false;
+
+  @override
+  int get rowCount => data.length;
+
+  @override
+  int get selectedRowCount => 0;
+}
+
